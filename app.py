@@ -4,7 +4,7 @@ import os
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app, origins="https://www.bolt-tanks.com/test-tank-finder")  # Enable CORS
+CORS(app, origins="https://www.bolt-tanks.com")  # Enable CORS
 
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
 TEMPLATE_ID = int(os.environ.get("TEMPLATE_ID"))
