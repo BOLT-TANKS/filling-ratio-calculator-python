@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: filling-ratio-python
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: BREVO_API_KEY
+        value: your_brevo_api_key  # Replace with your actual Brevo API key
+      - key: TEMPLATE_ID
+        value: your_template_id  # Replace with your actual Brevo template ID
