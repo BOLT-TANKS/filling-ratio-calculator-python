@@ -9,18 +9,21 @@ CORS(app, origins="https://www.bolt-tanks.com")
 
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
 TEMPLATE_ID = int(os.environ.get("TEMPLATE_ID"))
-EXCEL_FILE = "cargo_data.xlsx"  # Name of your Excel file
+EXCEL_FILE = "cargo_data.xlsx"
 
-def get_tp_code(un_number, cargo_name):
+def get_tp_code(cargo_info):
     """Reads the Excel sheet and returns the TP Code."""
     try:
         df = pd.read_excel(EXCEL_FILE)
-        row = df[(df["UN No."] == un_number) & (df["Cargo Name"] == cargo_name)]
+        row = df[(df["UN No."] == cargo_info) | (df["Cargo Name"] == cargo_info)]
         if not row.empty:
             return row.iloc[0]["TP Code"]
         else:
             return None
     except FileNotFoundError:
+        return None
+    except Exception as e:
+        print(f"Error reading Excel: {e}")
         return None
 
 @app.route("/send-email", methods=["POST"])
@@ -29,19 +32,15 @@ def send_email():
     print("Received data:", data)
 
     try:
-        # Get data from request
         density15 = float(data.get("density15"))
         density50 = float(data.get("density50"))
         tankCapacity = float(data.get("tankCapacity"))
-        un_number = data.get("unNumber")
-        cargo_name = data.get("cargoName")
+        cargo_info = data.get("cargoInfo")
 
-        # Determine TP Code from Excel
-        tpCode = get_tp_code(un_number, cargo_name)
+        tpCode = get_tp_code(cargo_info)
         if tpCode is None:
-            return jsonify({"success": False, "message": "TP Code not found for the given UN number and cargo name."}), 400
+            return jsonify({"success": False, "message": "TP Code not found for the given UN number or cargo name."}), 400
 
-        # Filling Ratio Calculation
         alpha = (density15 - density50) / (density50 * 35)
         if tpCode == "TP1":
             max_filling_percentage = 97 / (1 + alpha * (50 - 15))
@@ -53,14 +52,12 @@ def send_email():
         max_volume = (tankCapacity * max_filling_percentage) / 100
         max_mass = max_volume * density15
 
-        # Brevo Integration
         brevo_headers = {
             "accept": "application/json",
             "api-key": BREVO_API_KEY,
             "content-type": "application/json",
         }
 
-        # Check if contact exists
         contact_url = f"https://api.brevo.com/v3/contacts/{data.get('email')}"
         contact_response = requests.get(contact_url, headers=brevo_headers)
 
@@ -71,7 +68,6 @@ def send_email():
             requests.post("https://api.brevo.com/v3/contacts", headers=brevo_headers, json={"email": data.get("email"), "attributes": data})
             print("New contact created")
 
-        # Send email
         email_data = {
             "to": [{"email": data.get("email")}],
             "templateId": TEMPLATE_ID,
