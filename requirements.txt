@@ -2,3 +2,5 @@ Flask
 requests
 flask-cors
 gunicorn
+pandas
+openpyxl
