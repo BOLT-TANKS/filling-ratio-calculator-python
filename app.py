@@ -23,9 +23,13 @@ def send_email():
     print("Received data:", data)
 
     try:
-        un_or_cargo = data.get("cargoInfo").lower() if data.get("cargoInfo") else "" #convert to lower, and handle none.
+        un_or_cargo = data.get("cargoInfo").lower() if data.get("cargoInfo") else ""
 
         if df is not None:
+            # Convert columns to strings and handle NaN values
+            df["UN No."] = df["UN No."].fillna("").astype(str)
+            df["Cargo Name"] = df["Cargo Name"].fillna("").astype(str)
+
             # Search for TP code in Excel (case-insensitive)
             found_row = df[df["UN No."].str.lower() == un_or_cargo]
             if found_row.empty:
@@ -72,38 +76,7 @@ def send_email():
             }
 
         # Brevo Integration (Contact Creation/Update and Email Sending)
-        brevo_headers = {
-            "accept": "application/json",
-            "api-key": BREVO_API_KEY,
-            "content-type": "application/json",
-        }
-
-        # Check if contact exists
-        contact_url = f"https://api.brevo.com/v3/contacts/{data.get('email')}"
-        contact_response = requests.get(contact_url, headers=brevo_headers)
-
-        if contact_response.status_code == 200:
-            # Update existing contact
-            requests.put(contact_url, headers=brevo_headers, json={"attributes": data})
-            print("Existing contact updated")
-        else:
-            # Create new contact
-            requests.post("https://api.brevo.com/v3/contacts", headers=brevo_headers, json={"email": data.get("email"), "attributes": data})
-            print("New contact created")
-
-        # Send email
-        email_data = {
-            "to": [{"email": data.get("email")}],
-            "templateId": TEMPLATE_ID,
-            "params": {
-                "cargo_name": data.get("cargoInfo"),
-                "maximum_filling_percentage": response_message.get("maximum_filling_percentage"),
-                "maximum_permitted_volume": response_message.get("maximum_permitted_volume"),
-                "maximum_permitted_mass": response_message.get("maximum_permitted_mass"),
-                "message": response_message.get("message")
-            },
-        }
-        requests.post("https://api.brevo.com/v3/smtp/email", headers=brevo_headers, json=email_data)
+        # ... (rest of your Brevo code) ...
 
         return jsonify(response_message)
 
