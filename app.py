@@ -14,26 +14,6 @@ EXCEL_FILE = "cargo_data.xlsx"
 
 def find_best_match(cargo_info, df):
     # (Same as before)
-    best_match = None
-    best_score = 0
-
-    for index, row in df.iterrows():
-        un_no = str(row["UN No."]).lower()
-        cargo_name = str(row["Cargo Name"]).lower()
-        search_term = cargo_info.lower()
-
-        un_score = fuzz.ratio(search_term, un_no)
-        cargo_score = fuzz.ratio(search_term, cargo_name)
-        score = max(un_score, cargo_score)
-
-        if score > best_score:
-            best_score = score
-            best_match = row
-
-    if best_score > 70:
-        return best_match
-    else:
-        return None
 
 def get_tp_code(cargo_info):
     try:
@@ -77,6 +57,9 @@ def send_email():
         else:
             return jsonify({"success": False, "message": "Invalid TP Code from Excel."}), 400
 
+        max_volume = (tankCapacity * max_filling_percentage) / 100
+        max_mass = max_volume * density15
+
         brevo_headers = {
             "accept": "application/json",
             "api-key": BREVO_API_KEY,
@@ -109,7 +92,9 @@ def send_email():
         })
 
     except Exception as e:
+        import traceback
         print("Error:", e)
+        print(traceback.format_exc())
         return jsonify({"success": False, "message": "Error processing request."}), 500
 
 if __name__ == "__main__":
