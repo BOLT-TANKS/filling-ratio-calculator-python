@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 import requests
+import os
 
 app = Flask(__name__)
 
@@ -46,14 +47,18 @@ def send_email():
         print(f"Response Message: {response_message}")
 
         # Brevo Contact Creation/Update
-        brevo_api_key = "YOUR_BREVO_API_KEY"  # Replace with your Brevo API key
-        brevo_contact_url = "https://api.brevo.com/v3/contacts"  # Corrected Brevo contact URL
+        brevo_api_key = os.environ.get("BREVO_API_KEY")
+        brevo_contact_url = "https://api.brevo.com/v3/contacts"
 
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
             "api-key": brevo_api_key
         }
+
+        if not brevo_api_key:
+            print("Error: BREVO_API_KEY environment variable not set.")
+            return jsonify({"error": "Brevo API key not found"}), 500
 
         brevo_contact_response = requests.post(brevo_contact_url, headers=headers, json=data)
         print(f"Brevo contact response: {brevo_contact_response.json()}")
@@ -63,11 +68,22 @@ def send_email():
             return jsonify({"error": "Brevo contact API error", "details": brevo_contact_response.json()}), brevo_contact_response.status_code
 
         # Brevo Email Sending
-        brevo_email_url = "https://api.brevo.com/v3/smtp/email"  # Corrected Brevo email URL
+        brevo_email_url = "https://api.brevo.com/v3/smtp/email"
+        brevo_email_sender = os.environ.get("BREVO_EMAIL_SENDER")
+        brevo_email_template_id = os.environ.get("BREVO_EMAIL_TEMPLATE_ID")
+
+        if not brevo_email_sender:
+            print("Error: BREVO_EMAIL_SENDER environment variable not set.")
+            return jsonify({"error": "Sender email not found"}), 500
+
+        if not brevo_email_template_id:
+            print("Error: BREVO_EMAIL_TEMPLATE_ID environment variable not set.")
+            return jsonify({"error": "Template id not found"}), 500
+
         email_data = {
-            "sender": {"name": "BOLT", "email": "your_sender_email@example.com"},  # Replace with your sender email
+            "sender": {"name": "BOLT", "email": brevo_email_sender},
             "to": [{"email": data["email"]}],
-            "templateId": YOUR_EMAIL_TEMPLATE_ID,  # Replace with your Brevo email template ID
+            "templateId": int(brevo_email_template_id), #ensure template ID is an integer
             "params": {
                 "cargoName": data.get("cargoInfo", "N/A"),
                 "maxFillingRatio": response_message.get("maxFillingRatio", "N/A"),
