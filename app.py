@@ -12,7 +12,7 @@ def calculate_values(data):
     if density15 is not None and tank_capacity is not None:
         max_permitted_mass = density15 * tank_capacity
         max_permitted_volume = tank_capacity
-        max_filling_ratio = 1 #assumed 1, adjust as needed.
+        max_filling_ratio = 1  # assumed 1, adjust as needed.
         return {
             "maxFillingRatio": max_filling_ratio,
             "maxPermittedVolume": max_permitted_volume,
@@ -32,7 +32,7 @@ def send_email():
             return jsonify({"error": "Missing required fields"}), 400
 
         # Check for "Found" or "Not Found" (replace with your actual logic)
-        calculated_values = calculate_values(data) #replace with your database or API call.
+        calculated_values = calculate_values(data)  # replace with your database or API call.
         if calculated_values:
             response_message = {
                 "maxFillingRatio": calculated_values["maxFillingRatio"],
@@ -43,10 +43,11 @@ def send_email():
             response_message = {
                 "message": "The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
             }
+        print(f"Response Message: {response_message}")
 
         # Brevo Contact Creation/Update
-        brevo_api_key = "YOUR_BREVO_API_KEY"
-        brevo_contact_url = "YOUR_BREVO_CONTACT_ENDPOINT"
+        brevo_api_key = "YOUR_BREVO_API_KEY"  # Replace with your Brevo API key
+        brevo_contact_url = "https://api.brevo.com/v3/contacts"  # Corrected Brevo contact URL
 
         headers = {
             "accept": "application/json",
@@ -62,11 +63,11 @@ def send_email():
             return jsonify({"error": "Brevo contact API error", "details": brevo_contact_response.json()}), brevo_contact_response.status_code
 
         # Brevo Email Sending
-        brevo_email_url = "YOUR_BREVO_EMAIL_ENDPOINT"
+        brevo_email_url = "https://api.brevo.com/v3/smtp/email"  # Corrected Brevo email URL
         email_data = {
-            "sender": {"name": "BOLT", "email": "your_sender_email@example.com"},
+            "sender": {"name": "BOLT", "email": "your_sender_email@example.com"},  # Replace with your sender email
             "to": [{"email": data["email"]}],
-            "templateId": YOUR_EMAIL_TEMPLATE_ID,
+            "templateId": YOUR_EMAIL_TEMPLATE_ID,  # Replace with your Brevo email template ID
             "params": {
                 "cargoName": data.get("cargoInfo", "N/A"),
                 "maxFillingRatio": response_message.get("maxFillingRatio", "N/A"),
