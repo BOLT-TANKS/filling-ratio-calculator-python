@@ -23,11 +23,14 @@ def send_email():
     print("Received data:", data)
 
     try:
-        un_or_cargo = data.get("cargoInfo")  # Assuming cargoInfo is the UN number or cargo name
+        un_or_cargo = data.get("cargoInfo").lower() if data.get("cargoInfo") else "" #convert to lower, and handle none.
 
         if df is not None:
-            # Search for TP code in Excel
-            found_row = df[(df["UN No."] == un_or_cargo) | (df["Cargo Name"] == un_or_cargo)]
+            # Search for TP code in Excel (case-insensitive)
+            found_row = df[df["UN No."].str.lower() == un_or_cargo]
+            if found_row.empty:
+                found_row = df[df["Cargo Name"].str.lower() == un_or_cargo]
+
             if not found_row.empty:
                 tp_code = found_row.iloc[0]["TP Code"]
 
@@ -50,19 +53,22 @@ def send_email():
                 response_message = {
                     "success": True,
                     "message": "Email sent and contact saved/updated.",
-                    "maxFillingPercentage": max_filling_percentage,
-                    "maxVolume": max_volume,
-                    "maxMass": max_mass,
+                    "maximum_filling_percentage": max_filling_percentage,
+                    "maximum_permitted_volume": max_volume,
+                    "maximum_permitted_mass": max_mass,
+                    "cargo_name": data.get("cargoInfo")
                 }
             else:
                 response_message = {
                     "success": True,
                     "message": "The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon.",
+                    "cargo_name": data.get("cargoInfo")
                 }
         else:
             response_message = {
                 "success": True,
                 "message": "The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon.",
+                "cargo_name": data.get("cargoInfo")
             }
 
         # Brevo Integration (Contact Creation/Update and Email Sending)
@@ -89,7 +95,13 @@ def send_email():
         email_data = {
             "to": [{"email": data.get("email")}],
             "templateId": TEMPLATE_ID,
-            "params": data,
+            "params": {
+                "cargo_name": data.get("cargoInfo"),
+                "maximum_filling_percentage": response_message.get("maximum_filling_percentage"),
+                "maximum_permitted_volume": response_message.get("maximum_permitted_volume"),
+                "maximum_permitted_mass": response_message.get("maximum_permitted_mass"),
+                "message": response_message.get("message")
+            },
         }
         requests.post("https://api.brevo.com/v3/smtp/email", headers=brevo_headers, json=email_data)
 
