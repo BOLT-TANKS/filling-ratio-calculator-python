@@ -13,36 +13,38 @@ TEMPLATE_ID = int(os.environ.get("TEMPLATE_ID"))
 EXCEL_FILE = "cargo_data.xlsx"
 
 def find_best_match(cargo_info, df):
-    """Finds the best matching row in the DataFrame."""
+    # (Same as before)
     best_match = None
     best_score = 0
 
     for index, row in df.iterrows():
-        un_no = str(row["UN No."]).lower()  # Convert to string and lowercase
-        cargo_name = str(row["Cargo Name"]).lower() #Convert to string and lowercase
-        search_term = cargo_info.lower() #Convert to lowercase
+        un_no = str(row["UN No."]).lower()
+        cargo_name = str(row["Cargo Name"]).lower()
+        search_term = cargo_info.lower()
 
         un_score = fuzz.ratio(search_term, un_no)
         cargo_score = fuzz.ratio(search_term, cargo_name)
-        score = max(un_score, cargo_score) #Use the best score of the two.
+        score = max(un_score, cargo_score)
 
-        if score > 70:  # Adjust threshold as needed
+        if score > best_score:
             best_score = score
             best_match = row
 
-    if best_score > 70:  # Adjust threshold as needed
+    if best_score > 70:
         return best_match
     else:
         return None
 
 def get_tp_code(cargo_info):
-    """Reads the Excel sheet and returns the TP Code."""
     try:
         df = pd.read_excel(EXCEL_FILE)
         best_match = find_best_match(cargo_info, df)
 
         if best_match is not None:
-            return best_match["TP Code"]
+            tp_code = best_match["TP Code"]
+            if pd.isna(tp_code) or not isinstance(tp_code, str) or tp_code.strip() == "":
+                return "INVALID_TP_CODE"
+            return tp_code
         else:
             return None
     except FileNotFoundError:
@@ -61,7 +63,11 @@ def send_email():
 
         tpCode = get_tp_code(cargo_info)
         if tpCode is None:
-            return jsonify({"success": False, "message": "TP Code not found for the given UN number or cargo name."}), 400
+            error_message = "The UN number or cargo name shared is likely not associated with a liquid cargo.      However, BOLT team will get back to you for assistance."
+            return jsonify({"success": False, "message": error_message}), 400
+        elif tpCode == "INVALID_TP_CODE":
+            error_message = "The UN number or cargo name shared is likely not associated with a liquid cargo.      However, BOLT team will get back to you for assistance."
+            return jsonify({"success": False, "message": error_message}), 400
 
         alpha = (density15 - density50) / (density50 * 35)
         if tpCode == "TP1":
@@ -70,9 +76,6 @@ def send_email():
             max_filling_percentage = 95 / (1 + alpha * (50 - 15))
         else:
             return jsonify({"success": False, "message": "Invalid TP Code from Excel."}), 400
-
-        max_volume = (tankCapacity * max_filling_percentage) / 100
-        max_mass = max_volume * density15
 
         brevo_headers = {
             "accept": "application/json",
@@ -93,7 +96,7 @@ def send_email():
         email_data = {
             "to": [{"email": data.get("email")}],
             "templateId": TEMPLATE_ID,
-            "params": data,
+            "params": {**data, "error_message": error_message if 'error_message' in locals() else None},
         }
         requests.post("https://api.brevo.com/v3/smtp/email", headers=brevo_headers, json=email_data)
 
