@@ -1,104 +1,91 @@
 from flask import Flask, request, jsonify
 import requests
-import os
-import pandas as pd
-from flask_cors import CORS
-from fuzzywuzzy import fuzz
 
 app = Flask(__name__)
-CORS(app, origins="https://www.bolt-tanks.com")
 
-BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
-TEMPLATE_ID = int(os.environ.get("TEMPLATE_ID"))
-EXCEL_FILE = "cargo_data.xlsx"
+def calculate_values(data):
+    """Calculates Maximum Filling Ratio, Volume, and Mass."""
+    density15 = data.get('density15')
+    density50 = data.get('density50')
+    tank_capacity = data.get('tankCapacity')
 
-def get_tp_code(cargo_info):
-    """Reads the Excel sheet and returns the TP Code."""
-    try:
-        df = pd.read_excel(EXCEL_FILE)
-        cargo_info_lower = cargo_info.lower()
-
-        for index, row in df.iterrows():
-            un_no = str(row["UN No."]).lower()
-            cargo_name = str(row["Cargo Name"]).lower()
-
-            if cargo_info_lower == un_no or cargo_info_lower == cargo_name:
-                tp_code = row["TP Code"]
-                if pd.isna(tp_code) or not isinstance(tp_code, str) or tp_code.strip() == "":
-                    return "INVALID_TP_CODE"
-                return tp_code
-
-        return None  # No exact match found
-
-    except FileNotFoundError:
+    if density15 is not None and tank_capacity is not None:
+        max_permitted_mass = density15 * tank_capacity
+        max_permitted_volume = tank_capacity
+        max_filling_ratio = 1 #assumed 1, adjust as needed.
+        return {
+            "maxFillingRatio": max_filling_ratio,
+            "maxPermittedVolume": max_permitted_volume,
+            "maxPermittedMass": max_permitted_mass
+        }
+    else:
         return None
 
-@app.route("/send-email", methods=["POST"])
+@app.route('/send-email', methods=['POST'])
 def send_email():
-    data = request.get_json()
-    print("Received data:", data)
-
     try:
-        density15 = float(data.get("density15"))
-        density50 = float(data.get("density50"))
-        tankCapacity = float(data.get("tankCapacity"))
-        cargo_info = data.get("cargoInfo")
+        data = request.get_json()
+        print("Received data:", data)
 
-        tpCode = get_tp_code(cargo_info)
-        if tpCode is None:
-            error_message = "The UN number or cargo name shared is likely not associated with a liquid cargo.      However, BOLT team will get back to you for assistance."
-            return jsonify({"success": False, "message": error_message}), 400
-        elif tpCode == "INVALID_TP_CODE":
-            error_message = "The UN number or cargo name shared is likely not associated with a liquid cargo.      However, BOLT team will get back to you for assistance."
-            return jsonify({"success": False, "message": error_message}), 400
+        # Basic Validation
+        if not all(key in data for key in ['firstName', 'email']):
+            return jsonify({"error": "Missing required fields"}), 400
 
-        alpha = (density15 - density50) / (density50 * 35)
-        if tpCode == "TP1":
-            max_filling_percentage = 97 / (1 + alpha * (50 - 15))
-        elif tpCode == "TP2":
-            max_filling_percentage = 95 / (1 + alpha * (50 - 15))
+        # Check for "Found" or "Not Found" (replace with your actual logic)
+        calculated_values = calculate_values(data) #replace with your database or API call.
+        if calculated_values:
+            response_message = {
+                "maxFillingRatio": calculated_values["maxFillingRatio"],
+                "maxPermittedVolume": calculated_values["maxPermittedVolume"],
+                "maxPermittedMass": calculated_values["maxPermittedMass"]
+            }
         else:
-            return jsonify({"success": False, "message": "Invalid TP Code from Excel."}), 400
+            response_message = {
+                "message": "The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
+            }
 
-        max_volume = (tankCapacity * max_filling_percentage) / 100
-        max_mass = max_volume * density15
+        # Brevo Contact Creation/Update
+        brevo_api_key = "YOUR_BREVO_API_KEY"
+        brevo_contact_url = "YOUR_BREVO_CONTACT_ENDPOINT"
 
-        brevo_headers = {
+        headers = {
             "accept": "application/json",
-            "api-key": BREVO_API_KEY,
             "content-type": "application/json",
+            "api-key": brevo_api_key
         }
 
-        contact_url = f"https://api.brevo.com/v3/contacts/{data.get('email')}"
-        contact_response = requests.get(contact_url, headers=brevo_headers)
+        brevo_contact_response = requests.post(brevo_contact_url, headers=headers, json=data)
+        print(f"Brevo contact response: {brevo_contact_response.json()}")
 
-        if contact_response.status_code == 200:
-            requests.put(contact_url, headers=brevo_headers, json={"attributes": data})
-            print("Existing contact updated")
-        else:
-            requests.post("https://api.brevo.com/v3/contacts", headers=brevo_headers, json={"email": data.get("email"), "attributes": data})
-            print("New contact created")
+        if brevo_contact_response.status_code not in [200, 201]:
+            print(f"Brevo contact error: {brevo_contact_response.json()}")
+            return jsonify({"error": "Brevo contact API error", "details": brevo_contact_response.json()}), brevo_contact_response.status_code
 
+        # Brevo Email Sending
+        brevo_email_url = "YOUR_BREVO_EMAIL_ENDPOINT"
         email_data = {
-            "to": [{"email": data.get("email")}],
-            "templateId": TEMPLATE_ID,
-            "params": {**data, "error_message": error_message if 'error_message' in locals() else None},
+            "sender": {"name": "BOLT", "email": "your_sender_email@example.com"},
+            "to": [{"email": data["email"]}],
+            "templateId": YOUR_EMAIL_TEMPLATE_ID,
+            "params": {
+                "cargoName": data.get("cargoInfo", "N/A"),
+                "maxFillingRatio": response_message.get("maxFillingRatio", "N/A"),
+                "maxPermittedVolume": response_message.get("maxPermittedVolume", "N/A"),
+                "maxPermittedMass": response_message.get("maxPermittedMass", "N/A"),
+                "message": response_message.get("message", "N/A"),
+            }
         }
-        requests.post("https://api.brevo.com/v3/smtp/email", headers=brevo_headers, json=email_data)
+        brevo_email_response = requests.post(brevo_email_url, headers=headers, json=email_data)
+        print(f"Brevo email response: {brevo_email_response.json()}")
+        if brevo_email_response.status_code not in [200, 201]:
+            print(f"brevo email error: {brevo_email_response.json()}")
+            return jsonify({"error": "Brevo email API error", "details": brevo_email_response.json()}), brevo_email_response.status_code
 
-        return jsonify({
-            "success": True,
-            "message": "Email sent and contact saved/updated.",
-            "maxFillingPercentage": max_filling_percentage,
-            "maxVolume": max_volume,
-            "maxMass": max_mass,
-        })
+        return jsonify(response_message), 200
 
     except Exception as e:
-        import traceback
         print("Error:", e)
-        print(traceback.format_exc())
-        return jsonify({"success": False, "message": "Error processing request."}), 500
+        return jsonify({"error": str(e)}), 500
 
-if __name__ == "__main__":
-    app.run(debug=False)
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
