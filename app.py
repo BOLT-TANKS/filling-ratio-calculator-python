@@ -1,108 +1,103 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+from flask_cors import CORS
+import pandas as pd
 
 app = Flask(__name__)
+CORS(app, origins="https://www.bolt-tanks.com")
 
-def calculate_values(data):
-    """Calculates Maximum Filling Ratio, Volume, and Mass."""
-    density15 = data.get('density15')
-    density50 = data.get('density50')
-    tank_capacity = data.get('tankCapacity')
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
+TEMPLATE_ID = int(os.environ.get("TEMPLATE_ID"))
 
-    if density15 is not None and tank_capacity is not None:
-        max_permitted_mass = density15 * tank_capacity
-        max_permitted_volume = tank_capacity
-        max_filling_ratio = 1  # assumed 1, adjust as needed.
-        return {
-            "maxFillingRatio": max_filling_ratio,
-            "maxPermittedVolume": max_permitted_volume,
-            "maxPermittedMass": max_permitted_mass
-        }
-    else:
-        return None
+# Load Excel sheet
+try:
+    df = pd.read_excel("cargo_data.xlsx")
+except FileNotFoundError:
+    print("Error: Excel file cargo_data.xlsx not found.")
+    df = None
 
-@app.route('/send-email', methods=['POST'])
+@app.route("/send-email", methods=["POST"])
 def send_email():
+    data = request.get_json()
+    print("Received data:", data)
+
     try:
-        data = request.get_json()
-        print("Received data:", data)
+        un_or_cargo = data.get("cargoInfo")  # Assuming cargoInfo is the UN number or cargo name
 
-        # Basic Validation
-        if not all(key in data for key in ['firstName', 'email']):
-            return jsonify({"error": "Missing required fields"}), 400
+        if df is not None:
+            # Search for TP code in Excel
+            found_row = df[(df["UN No."] == un_or_cargo) | (df["Cargo Name"] == un_or_cargo)]
+            if not found_row.empty:
+                tp_code = found_row.iloc[0]["TP Code"]
 
-        # Check for "Found" or "Not Found" (replace with your actual logic)
-        calculated_values = calculate_values(data)  # replace with your database or API call.
-        if calculated_values:
-            response_message = {
-                "maxFillingRatio": calculated_values["maxFillingRatio"],
-                "maxPermittedVolume": calculated_values["maxPermittedVolume"],
-                "maxPermittedMass": calculated_values["maxPermittedMass"]
-            }
+                # Filling Ratio Calculation
+                density15 = float(data.get("density15"))
+                density50 = float(data.get("density50"))
+                tankCapacity = float(data.get("tankCapacity"))
+
+                alpha = (density15 - density50) / (density50 * 35)
+                if tp_code == "TP1":
+                    max_filling_percentage = 97 / (1 + alpha * (50 - 15))
+                elif tp_code == "TP2":
+                    max_filling_percentage = 95 / (1 + alpha * (50 - 15))
+                else:
+                    return jsonify({"success": False, "message": "Invalid TP Code."}), 400
+
+                max_volume = (tankCapacity * max_filling_percentage) / 100
+                max_mass = max_volume * density15
+
+                response_message = {
+                    "success": True,
+                    "message": "Email sent and contact saved/updated.",
+                    "maxFillingPercentage": max_filling_percentage,
+                    "maxVolume": max_volume,
+                    "maxMass": max_mass,
+                }
+            else:
+                response_message = {
+                    "success": True,
+                    "message": "The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon.",
+                }
         else:
             response_message = {
-                "message": "The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
+                "success": True,
+                "message": "The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon.",
             }
-        print(f"Response Message: {response_message}")
 
-        # Brevo Contact Creation/Update
-        brevo_api_key = os.environ.get("BREVO_API_KEY")
-        brevo_contact_url = "https://api.brevo.com/v3/contacts"
-
-        headers = {
+        # Brevo Integration (Contact Creation/Update and Email Sending)
+        brevo_headers = {
             "accept": "application/json",
+            "api-key": BREVO_API_KEY,
             "content-type": "application/json",
-            "api-key": brevo_api_key
         }
 
-        if not brevo_api_key:
-            print("Error: BREVO_API_KEY environment variable not set.")
-            return jsonify({"error": "Brevo API key not found"}), 500
+        # Check if contact exists
+        contact_url = f"https://api.brevo.com/v3/contacts/{data.get('email')}"
+        contact_response = requests.get(contact_url, headers=brevo_headers)
 
-        brevo_contact_response = requests.post(brevo_contact_url, headers=headers, json=data)
-        print(f"Brevo contact response: {brevo_contact_response.json()}")
+        if contact_response.status_code == 200:
+            # Update existing contact
+            requests.put(contact_url, headers=brevo_headers, json={"attributes": data})
+            print("Existing contact updated")
+        else:
+            # Create new contact
+            requests.post("https://api.brevo.com/v3/contacts", headers=brevo_headers, json={"email": data.get("email"), "attributes": data})
+            print("New contact created")
 
-        if brevo_contact_response.status_code not in [200, 201]:
-            print(f"Brevo contact error: {brevo_contact_response.json()}")
-            return jsonify({"error": "Brevo contact API error", "details": brevo_contact_response.json()}), brevo_contact_response.status_code
-
-        # Brevo Email Sending
-        brevo_email_url = "https://api.brevo.com/v3/smtp/email"
-        brevo_email_sender = os.environ.get("BREVO_EMAIL_SENDER")
-        brevo_email_template_id = os.environ.get("BREVO_EMAIL_TEMPLATE_ID")
-
-        if not brevo_email_sender:
-            print("Error: BREVO_EMAIL_SENDER environment variable not set.")
-            return jsonify({"error": "Sender email not found"}), 500
-
-        if not brevo_email_template_id:
-            print("Error: BREVO_EMAIL_TEMPLATE_ID environment variable not set.")
-            return jsonify({"error": "Template id not found"}), 500
-
+        # Send email
         email_data = {
-            "sender": {"name": "BOLT", "email": brevo_email_sender},
-            "to": [{"email": data["email"]}],
-            "templateId": int(brevo_email_template_id), #ensure template ID is an integer
-            "params": {
-                "cargoName": data.get("cargoInfo", "N/A"),
-                "maxFillingRatio": response_message.get("maxFillingRatio", "N/A"),
-                "maxPermittedVolume": response_message.get("maxPermittedVolume", "N/A"),
-                "maxPermittedMass": response_message.get("maxPermittedMass", "N/A"),
-                "message": response_message.get("message", "N/A"),
-            }
+            "to": [{"email": data.get("email")}],
+            "templateId": TEMPLATE_ID,
+            "params": data,
         }
-        brevo_email_response = requests.post(brevo_email_url, headers=headers, json=email_data)
-        print(f"Brevo email response: {brevo_email_response.json()}")
-        if brevo_email_response.status_code not in [200, 201]:
-            print(f"brevo email error: {brevo_email_response.json()}")
-            return jsonify({"error": "Brevo email API error", "details": brevo_email_response.json()}), brevo_email_response.status_code
+        requests.post("https://api.brevo.com/v3/smtp/email", headers=brevo_headers, json=email_data)
 
-        return jsonify(response_message), 200
+        return jsonify(response_message)
 
     except Exception as e:
         print("Error:", e)
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"success": False, "message": "Error processing request."}), 500
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+if __name__ == "__main__":
+    app.run(debug=False)
