@@ -54,14 +54,22 @@ def send_email():
                 }), 404
 
         # Check for UN/Cargo mismatch
-        un_cargo_pairs = df[["UN No.", "Cargo Name"]].values.tolist()
-        if [un_number, cargo_name] not in un_cargo_pairs:
-            #check if the un number or cargo name are in the excel sheet
-            if un_number in df["UN No."].values.tolist() and cargo_name in df["Cargo Name"].values.tolist():
+        un_numbers_in_excel = df["UN No."].tolist()
+        cargo_names_in_excel = df["Cargo Name"].tolist()
+
+        if un_number in un_numbers_in_excel and cargo_name in cargo_names_in_excel:
+            # Check if they belong to the same row
+            if not any((df["UN No."] == un_number) & (df["Cargo Name"] == cargo_name)):
                 return jsonify({
                     "success": False,
                     "message": "Not Match: Request you to please check as the UN No. and Cargo Name do not match."
                 }), 400
+
+        elif un_number in un_numbers_in_excel or cargo_name in cargo_names_in_excel:
+            return jsonify({
+                "success": False,
+                "message": "Not Match: Request you to please check as the UN No. and Cargo Name do not match."
+            }), 400
 
         alpha = (density15 - density50) / (density50 * 35)
         if tp_code == "TP1":
