@@ -53,23 +53,19 @@ def send_email():
                     "message": "Not Found: The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
                 }), 404
 
-        # Check for UN/Cargo mismatch
-        un_numbers_in_excel = df["UN No."].tolist()
-        cargo_names_in_excel = df["Cargo Name"].tolist()
+        # Direct mismatch check
+        mismatch = True
+        for index, row in df.iterrows():
+            if row["UN No."] == un_number and row["Cargo Name"] == cargo_name:
+                mismatch = False
+                break
 
-        if un_number in un_numbers_in_excel and cargo_name in cargo_names_in_excel:
-            # Check if they belong to the same row
-            if not any((df["UN No."] == un_number) & (df["Cargo Name"] == cargo_name)):
+        if mismatch:
+            if un_number in df['UN No.'].values or cargo_name in df['Cargo Name'].values:
                 return jsonify({
                     "success": False,
                     "message": "Not Match: Request you to please check as the UN No. and Cargo Name do not match."
                 }), 400
-
-        elif un_number in un_numbers_in_excel or cargo_name in cargo_names_in_excel:
-            return jsonify({
-                "success": False,
-                "message": "Not Match: Request you to please check as the UN No. and Cargo Name do not match."
-            }), 400
 
         alpha = (density15 - density50) / (density50 * 35)
         if tp_code == "TP1":
