@@ -12,7 +12,9 @@ TEMPLATE_ID = int(os.environ.get("TEMPLATE_ID"))
 
 try:
     df = pd.read_excel("cargo_data.xlsx")
-    df["UN No."] = df["UN No."].astype(str)
+    df["UN No."] = df["UN No."].astype(str).str.strip()  # Crucial: Convert to string and strip
+    df["Cargo Name"] = df["Cargo Name"].astype(str).str.strip() # Crucial: Convert to string and strip
+
 except Exception as e:
     print(f"Error loading Excel: {e}")
     df = pd.DataFrame()
@@ -26,8 +28,8 @@ def send_email():
         density15 = float(data.get("density15"))
         density50 = float(data.get("density50"))
         tankCapacity = float(data.get("tankCapacity"))
-        un_number = str(data.get("unNumber")).strip()
-        cargo_name = str(data.get("cargoName")).strip()
+        un_number = str(data.get("unNumber")).strip() #Crucial: Strip
+        cargo_name = str(data.get("cargoName")).strip() #Crucial: Strip
 
         print(f"UN Number from request: '{un_number}'")
         print(f"Cargo Name from request: '{cargo_name}'")
@@ -53,19 +55,15 @@ def send_email():
                     "message": "Not Found: The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
                 }), 404
 
-        # Direct mismatch check
-        mismatch = True
-        for index, row in df.iterrows():
-            if row["UN No."] == un_number and row["Cargo Name"] == cargo_name:
-                mismatch = False
-                break
-
-        if mismatch:
-            if un_number in df['UN No.'].values or cargo_name in df['Cargo Name'].values:
-                return jsonify({
-                    "success": False,
-                    "message": "Not Match: Request you to please check as the UN No. and Cargo Name do not match."
-                }), 400
+        # Direct mismatch check - Improved
+        if un_number not in df['UN No.'].values or cargo_name not in df['Cargo Name'].values:
+            #If either the un number, or cargo name are not in the dataframe, then it is a not found.
+            pass
+        elif not any((df["UN No."] == un_number) & (df["Cargo Name"] == cargo_name)):
+            return jsonify({
+                "success": False,
+                "message": "Not Match: Request you to please check as the UN No. and Cargo Name do not match."
+            }), 400
 
         alpha = (density15 - density50) / (density50 * 35)
         if tp_code == "TP1":
