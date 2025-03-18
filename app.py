@@ -12,7 +12,6 @@ TEMPLATE_ID = int(os.environ.get("TEMPLATE_ID"))
 
 try:
     df = pd.read_excel("cargo_data.xlsx")
-    # Convert UN No. column to string
     df["UN No."] = df["UN No."].astype(str)
 except Exception as e:
     print(f"Error loading Excel: {e}")
@@ -27,8 +26,8 @@ def send_email():
         density15 = float(data.get("density15"))
         density50 = float(data.get("density50"))
         tankCapacity = float(data.get("tankCapacity"))
-        un_number = str(data.get("unNumber")).strip() #convert to string and remove whitespace
-        cargo_name = str(data.get("cargoName")).strip() #convert to string and remove whitespace
+        un_number = str(data.get("unNumber")).strip()
+        cargo_name = str(data.get("cargoName")).strip()
 
         print(f"UN Number from request: '{un_number}'")
         print(f"Cargo Name from request: '{cargo_name}'")
@@ -40,19 +39,35 @@ def send_email():
 
             if not matching_rows.empty:
                 tp_code = matching_rows.iloc[0]["TP Code"]
-                print(f"TP Code found: {tp_code}") #debugging
+                print(f"TP Code found: {tp_code}")
             else:
-                print("No matching row found in Excel.") #debugging
+                print("No matching row found in Excel.")
                 return jsonify({
                     "success": False,
-                    "message": "The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
-                }), 400
+                    "message": "Not Found: The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
+                }), 404  # Changed to 404 Not Found
         else:
-            print("Excel is empty, or UN/Cargo is missing.") #debugging
+            print("Excel is empty, or UN/Cargo is missing.")
             return jsonify({
                     "success": False,
-                    "message": "The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
-                }), 400
+                    "message": "Not Found: The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
+                }), 404 # Changed to 404 Not Found
+
+        # Check for UN/Cargo mismatch
+        all_un_numbers = df["UN No."].tolist()
+        all_cargo_names = df["Cargo Name"].tolist()
+
+        if un_number in all_un_numbers and cargo_name not in df[df["UN No."] == un_number]["Cargo Name"].tolist():
+            return jsonify({
+                "success": False,
+                "message": "Not Match: Request you to please check as the UN No. and Cargo Name do not match."
+            }), 400
+
+        if cargo_name in all_cargo_names and un_number not in df[df["Cargo Name"] == cargo_name]["UN No."].tolist():
+            return jsonify({
+                "success": False,
+                "message": "Not Match: Request you to please check as the UN No. and Cargo Name do not match."
+            }), 400
 
         alpha = (density15 - density50) / (density50 * 35)
         if tp_code == "TP1":
