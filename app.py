@@ -12,6 +12,8 @@ TEMPLATE_ID = int(os.environ.get("TEMPLATE_ID"))
 
 try:
     df = pd.read_excel("cargo_data.xlsx")
+    # Convert UN No. column to string
+    df["UN No."] = df["UN No."].astype(str)
 except Exception as e:
     print(f"Error loading Excel: {e}")
     df = pd.DataFrame()
@@ -25,21 +27,28 @@ def send_email():
         density15 = float(data.get("density15"))
         density50 = float(data.get("density50"))
         tankCapacity = float(data.get("tankCapacity"))
-        un_number = data.get("unNumber")
-        cargo_name = data.get("cargoName")
+        un_number = str(data.get("unNumber")).strip() #convert to string and remove whitespace
+        cargo_name = str(data.get("cargoName")).strip() #convert to string and remove whitespace
+
+        print(f"UN Number from request: '{un_number}'")
+        print(f"Cargo Name from request: '{cargo_name}'")
 
         if not df.empty and un_number and cargo_name:
             matching_rows = df[
                 (df["UN No."] == un_number) & (df["Cargo Name"] == cargo_name)
             ]
+
             if not matching_rows.empty:
                 tp_code = matching_rows.iloc[0]["TP Code"]
+                print(f"TP Code found: {tp_code}") #debugging
             else:
+                print("No matching row found in Excel.") #debugging
                 return jsonify({
                     "success": False,
                     "message": "The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
                 }), 400
         else:
+            print("Excel is empty, or UN/Cargo is missing.") #debugging
             return jsonify({
                     "success": False,
                     "message": "The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
