@@ -12,9 +12,8 @@ TEMPLATE_ID = int(os.environ.get("TEMPLATE_ID"))
 
 try:
     df = pd.read_excel("cargo_data.xlsx")
-    df["UN No."] = df["UN No."].astype(str).str.strip()  # Crucial: Convert to string and strip
-    df["Cargo Name"] = df["Cargo Name"].astype(str).str.strip() # Crucial: Convert to string and strip
-
+    df["UN No."] = df["UN No."].astype(str).str.strip()
+    df["Cargo Name"] = df["Cargo Name"].astype(str).str.strip()
 except Exception as e:
     print(f"Error loading Excel: {e}")
     df = pd.DataFrame()
@@ -28,42 +27,34 @@ def send_email():
         density15 = float(data.get("density15"))
         density50 = float(data.get("density50"))
         tankCapacity = float(data.get("tankCapacity"))
-        un_number = str(data.get("unNumber")).strip() #Crucial: Strip
-        cargo_name = str(data.get("cargoName")).strip() #Crucial: Strip
+        un_number = str(data.get("unNumber")).strip()
+        cargo_name = str(data.get("cargoName")).strip()
 
         print(f"UN Number from request: '{un_number}'")
         print(f"Cargo Name from request: '{cargo_name}'")
 
-        if not df.empty and un_number and cargo_name:
-            matching_rows = df[
-                (df["UN No."] == un_number) & (df["Cargo Name"] == cargo_name)
-            ]
-
-            if not matching_rows.empty:
-                tp_code = matching_rows.iloc[0]["TP Code"]
-                print(f"TP Code found: {tp_code}")
-            else:
-                print("No matching row found in Excel.")
-                return jsonify({
-                    "success": False,
-                    "message": "Not Found: The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
-                }), 404
-        else:
-            print("Excel is empty, or UN/Cargo is missing.")
-            return jsonify({
-                    "success": False,
-                    "message": "Not Found: The UN number or cargo name shared is likely not associated with a liquid cargo.\nHowever, Team BOLT will check and get back to you soon."
-                }), 404
-
-        # Direct mismatch check - Improved
-        if un_number not in df['UN No.'].values or cargo_name not in df['Cargo Name'].values:
-            #If either the un number, or cargo name are not in the dataframe, then it is a not found.
-            pass
-        elif not any((df["UN No."] == un_number) & (df["Cargo Name"] == cargo_name)):
+        if df.empty:
             return jsonify({
                 "success": False,
-                "message": "Not Match: Request you to please check as the UN No. and Cargo Name do not match."
+                "message": "Database unavailable: Unable to verify UN number and Cargo Name. Please try again later."
+            }), 500
+
+        if un_number not in df['UN No.'].values or cargo_name not in df['Cargo Name'].values:
+            return jsonify({
+                "success": False,
+                "message": "Verification Failed: The provided UN number or Cargo Name is not associated with a liquid cargo. Our team will review and get back to you."
+            }), 404
+
+        matching_rows = df[(df["UN No."] == un_number) & (df["Cargo Name"] == cargo_name)]
+
+        if matching_rows.empty:
+            return jsonify({
+                "success": False,
+                "message": "Mismatch Detected: The provided UN Number and Cargo Name do not correspond. Please check and provide accurate details."
             }), 400
+
+        tp_code = matching_rows.iloc[0]["TP Code"]
+        print(f"TP Code found: {tp_code}")
 
         alpha = (density15 - density50) / (density50 * 35)
         if tp_code == "TP1":
@@ -73,7 +64,7 @@ def send_email():
         else:
             return jsonify({
                 "success": False,
-                "message": "Invalid TP Code found in Excel."
+                "message": "Invalid data: TP Code not recognized."
             }), 500
 
         max_volume = (tankCapacity * max_filling_percentage) / 100
@@ -109,7 +100,7 @@ def send_email():
 
         return jsonify({
             "success": True,
-            "message": "Email sent and contact saved/updated.",
+            "message": "Email sent successfully and contact information updated.",
             "maxFillingPercentage": max_filling_percentage,
             "maxVolume": max_volume,
             "maxMass": max_mass,
@@ -117,7 +108,7 @@ def send_email():
 
     except Exception as e:
         print("Error:", e)
-        return jsonify({"success": False, "message": "Error processing request."}), 500
+        return jsonify({"success": False, "message": "Processing error. Please try again later."}), 500
 
 if __name__ == "__main__":
     app.run(debug=False)
