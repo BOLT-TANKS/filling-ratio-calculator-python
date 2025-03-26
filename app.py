@@ -1,5 +1,30 @@
+from flask import Flask, request, jsonify
+import requests
+import os
+import pandas as pd
+from flask_cors import CORS
+import logging
+
+app = Flask(__name__)  # Create the Flask app instance here!
+CORS(app, origins="https://www.bolt-tanks.com")
+
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY")
+TEMPLATE_ID = int(os.environ.get("TEMPLATE_ID"))
+
+# Configure logging
+logging.basicConfig(level=logging.ERROR)
+
+try:
+    df = pd.read_excel("cargo_data.xlsx")
+    df["UN No."] = df["UN No."].astype(str).str.strip().str.lower()
+    df["Cargo Name"] = df["Cargo Name"].astype(str).str.strip().str.lower()
+except Exception as e:
+    logging.error(f"Error loading Excel: {e}")
+    df = pd.DataFrame()
+
 @app.route("/send-email", methods=["POST"])
 def send_email():
+    # ... (rest of your send_email function code)
     data = request.get_json()
     logging.debug(f"Received data: {data}")
 
@@ -97,3 +122,6 @@ def send_email():
     except Exception as e:
         logging.error(f"Error: {e}")
         return jsonify({"success": False, "message": "Processing error. Please try again later."}), 500
+
+if __name__ == "__main__":
+    app.run(debug=False)
